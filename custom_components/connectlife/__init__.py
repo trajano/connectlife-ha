@@ -10,7 +10,7 @@ from connectlife.api import ConnectLifeApi
 from .const import DOMAIN
 from .coordinator import ConnectLifeCoordinator
 
-PLATFORMS: list[Platform] = [Platform.SENSOR]
+PLATFORMS: list[Platform] = [Platform.CLIMATE, Platform.SENSOR]
 
 
 async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:

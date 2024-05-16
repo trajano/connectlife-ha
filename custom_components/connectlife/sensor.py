@@ -12,7 +12,7 @@ from .const import (
 )
 from .coordinator import ConnectLifeCoordinator
 from .entity import ConnectLifeEntity
-from connectlife.appliance import ConnectLifeAppliance
+from connectlife.appliance import ConnectLifeAppliance, DeviceType
 
 _LOGGER = logging.getLogger(__name__)
 
@@ -27,9 +27,10 @@ async def async_setup_entry(
     coordinator = hass.data[DOMAIN][config_entry.entry_id]
 
     for appliance in coordinator.appliances.values():
-        async_add_entities(
-            ConnectLifeStatusSensor(coordinator, appliance, s) for s in appliance.status_list
-        )
+        if appliance.device_type not in [DeviceType.HVAC]:
+            async_add_entities(
+                [ConnectLifeStatusSensor(coordinator, appliance, s) for s in appliance.status_list]
+            )
 
 
 class ConnectLifeStatusSensor(ConnectLifeEntity, SensorEntity):
