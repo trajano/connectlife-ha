@@ -1,8 +1,10 @@
 """Provides a climate entity for ConnectLife."""
 
 import logging
+from typing import Any
 
 from homeassistant.components.climate import (
+    ATTR_TEMPERATURE,
     ClimateEntity,
     ClimateEntityFeature,
     HVACMode,
@@ -31,7 +33,7 @@ FAN_MODES_MAP = {
     8: "high",
     9: "super high"
 }
-FAN_MODES = FAN_MODES_MAP.values()
+FAN_MODES = list(FAN_MODES_MAP.values())
 HVAC_MODES = [HVACMode.FAN_ONLY, HVACMode.HEAT, HVACMode.COOL, HVACMode.DRY, HVACMode.AUTO]
 
 async def async_setup_entry(
@@ -61,41 +63,27 @@ class ConnectLifeClimateEntity(ConnectLifeEntity, ClimateEntity):
     def __init__(self, coordinator: ConnectLifeCoordinator, appliance: ConnectLifeAppliance):
         """Initialize the entity."""
         super().__init__(coordinator, appliance)
-        self._attr_unique_id = {appliance.device_id}
+        self._attr_unique_id = appliance.device_id
         self._handle_coordinator_update()
         self._attr_max_temp = 32 if self._attr_temperature_unit == UnitOfTemperature.CELSIUS else 90
         self._attr_min_temp = 16 if self._attr_temperature_unit == UnitOfTemperature.CELSIUS else 61
-        _attr_supported_features = ClimateEntityFeature.TARGET_TEMPERATURE | ClimateEntityFeature.TURN_OFF
-        # TODO: Add fan speed and swing mode
+        self._attr_supported_features = ClimateEntityFeature.TARGET_TEMPERATURE | ClimateEntityFeature.TURN_OFF
+        if "t_fan_speed" in appliance.status_list:
+            self._attr_supported_features |= ClimateEntityFeature.FAN_MODE
+        # TODO: Add swing modes
 
     @callback
     def _handle_coordinator_update(self) -> None:
         """Handle updated data from the coordinator."""
+        status_list = self.coordinator.appliances[self.device_id].status_list
+        self._attr_temperature_unit = TEMPERATUR_UNIT[status_list["t_temp_type"]]
+        self._attr_target_temperature = status_list["t_temp"]
+        self._attr_current_temperature = status_list["f_temp_in"]
+        self._attr_fan_mode = FAN_MODES_MAP[status_list["t_fan_speed"]]
+        self._attr_hvac_mode = HVACMode.OFF if status_list["t_power"] == 0 else HVAC_MODES[status_list["t_work_mode"]]
+        self.async_write_ha_state()
 
-        self._attr_temperature_unit = TEMPERATUR_UNIT[self.coordinator.appliances[self.device_id].status_list["t_temp_type"]]
-
-        self._attr_target_temperature = self.coordinator.appliances[self.device_id].status_list["t_temp"]
-        self._attr_current_temperature = self.coordinator.appliances[self.device_id].status_list["f_temp_in"]
-        self._attr_fan_mode = FAN_MODE_MAP[self.coordinator.appliances[self.device_id].status_list["t_fan_speed"]]
-
-        # $this->modeOptions = $this->extractMetadata($deviceConfiguration, 't_work_mode');
-        # $this->fanSpeedOptions = $this->extractMetadata($deviceConfiguration, 't_fan_speed');
-        # $this->swingOptions = $this->extractSwingModes($deviceConfiguration);
-        # $this->fanSpeed = array_search($connectLifeAcDeviceStatus['statusList']['t_fan_speed'], $this->fanSpeedOptions);
-        #
-        # foreach ($this->swingOptions as $k => $v) {
-        #   if (
-        #     $v['t_swing_direction'] === ($connectLifeAcDeviceStatus['statusList']['t_swing_direction'] ?? null) &&
-        #     $v['t_swing_angle'] === ($connectLifeAcDeviceStatus['statusList']['t_swing_angle'] ?? null)
-        #   ) {
-        #     $this->swing = $k;
-        #   }
-        # }
-        #
-        # $this->mode = $connectLifeAcDeviceStatus['statusList']['t_power'] === '0'
-        #   ? 'off'
-        #   : array_search($connectLifeAcDeviceStatus['statusList']['t_work_mode'], $this->modeOptions);
-        #
-
-
-
+    async def async_set_temperature(self, **kwargs: Any) -> None:
+        """Set new target temperature."""
+        if ATTR_TEMPERATURE in kwargs:
+            await self.coordinator.api.update_appliance(self.puid, {"f_temp", round(kwargs[ATTR_TEMPERATURE])})
